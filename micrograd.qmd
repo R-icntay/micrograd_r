@@ -16,7 +16,7 @@ editor: visual
 
 ## Building micrograd in R
 
-In this notebook, we will attempt to build an R version of [Andrej Karpathy's micrograd](https://github.com/karpathy/micrograd) in R. `Micrograd` is a tiny scalar-valued autograd engine and a neural net library on top of it with PyTorch-like API.
+In this notebook, we will attempt to build an R version of [Andrej Karpathy's micrograd](https://github.com/karpathy/micrograd). `Micrograd` is a tiny scalar-valued autograd engine and a neural net library on top of it with PyTorch-like API.
 
 ::: callout-warning
 Some fair warning 🤗
