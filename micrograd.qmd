@@ -1,0 +1,81 @@
+---
+title: "Building micRogRad"
+execute: 
+  error: true
+format: 
+  html:
+    number-sections: true
+    toc: true
+    toc-location: left
+    toc-depth: 4
+    code-tools: true
+    code-fold: false
+    code-link: true
+editor: visual
+---
+
+## Building micrograd in R
+
+In this notebook, we will attempt to build an R version of [Andrej Karpathy's micrograd](https://github.com/karpathy/micrograd) in R. `Micrograd` is a tiny scalar-valued autograd engine and a neural net library on top of it with PyTorch-like API.
+
+::: callout-warning
+Some fair warning 🤗
+
+This is me trying to learn R's OOP system R7: <https://github.com/RConsortium/OOP-WG>. Might be hacky here and there.
+
+Here's my learning process for R7: <https://rpubs.com/eR_ic/r7>
+:::
+
+## Initial class definition
+
+```{r}
+# Load R7 library
+library(R7)
+
+
+```
+
+To begin with, we create a class `Value` that takes a scalar, keeps track of it and prints it out
+
+```{r}
+# Define a class value that takes a numeric input
+Value <- new_class(name = "Value",
+                   # Specify properties/data that the object will posess
+                   properties = list(data = class_numeric))
+
+# Register a cat method on S3 "print" generic
+method(generic = print, Value) <- function(x, ...){
+  cat("Value(data=", x@data,")", sep = "")
+}
+
+
+# Create a class instance
+a <- Value(2.0)
+a
+```
+
+::: callout-note
+R7 uses **functional OOP** where **methods belong to** **generic** functions. We have registered a **method** on the S3 generic `print` that will implement the `cat` function on our R7 class `Value`
+:::
+
+```{r}
+a = Value(2.0)
+b = Value(-3.0)
+b^a
+```
+
+Ooops. Not so fast. Let's add some mathematical methods too.
+
+## Add mathematical operators
+
+```{r}
+# Define class Value
+# Value <- new_class("Value",
+#                    properties = list(data = class_numeric))
+
+
+# Ops.Value = function(e1, e2) get(.Generic)(e1@data, e2@data)
+S4_register(Value)
+method(Ops, list(Value, NULL)) <- function(e1, e2){
+  getGenerics(e1@data, e2@data)}
+```
