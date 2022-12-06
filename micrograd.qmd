@@ -61,7 +61,14 @@ R7 uses **functional OOP** where **methods belong to** **generic** functions. We
 ```{r}
 a = Value(2.0)
 b = Value(-3.0)
-b^a
+c=a+b
+```
+
+```{r}
+# Register an add method
+method(`+`, list(Value, NULL)) <- function(e1, e2){
+  return(Value(data = e1@data + e2@data))
+}
 ```
 
 Ooops. Not so fast. Let's add some mathematical methods too.
@@ -79,3 +86,5 @@ S4_register(Value)
 method(Ops, list(Value, NULL)) <- function(e1, e2){
   getGenerics(e1@data, e2@data)}
 ```
+
+https://stackoverflow.com/questions/35902360/r-implement-group-generics-ops-to-enable-comparison-of-s3-objects
