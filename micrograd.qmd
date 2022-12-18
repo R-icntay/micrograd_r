@@ -31,6 +31,7 @@ Here's my learning process for R7: <https://rpubs.com/eR_ic/r7>
 ```{r}
 # Load R7 library
 library(R7)
+library(magrittr)
 
 
 ```
@@ -40,10 +41,10 @@ To begin with, we create a class `Value` that takes a scalar, keeps track of it 
 ```{r}
 # Define a class value that takes a numeric input
 Value <- new_class(name = "Value",
-                   # Specify properties/data that the object will posess
+                   # Specify properties/data that the object will possess
                    properties = list(data = class_numeric))
 
-# Register a cat method on S3 "print" generic
+# Register a cat method for Value on S3 "print" generic
 method(generic = print, Value) <- function(x, ...){
   cat("Value(data=", x@data,")", sep = "")
 }
@@ -64,16 +65,118 @@ b = Value(-3.0)
 c=a+b
 ```
 
+Ooops. Not so fast. The object does not know how to handle an addition operation yet. Let's add some mathematical methods too.
+
+## Add mathematical operators
+
 ```{r}
-# Register an add method
-method(`+`, list(Value, NULL)) <- function(e1, e2){
-  return(Value(data = e1@data + e2@data))
+# S4_register(Value)
+# method(Ops, list(Value, NULL)) <- function(e1, e2){
+#   value = get(.Generic)(e1@data, e2@data)
+#   # Convert to Value object
+#   return(Value(value))
+# }
+```
+
+```{r}
+method(`+`, list(Value, NULL)) <- function(x, y){
+  value = a@data + b@data
+  # Convert to Value object
+  return(Value(value))
 }
 ```
 
-Ooops. Not so fast. Let's add some mathematical methods too.
+Now `a + b` should work:
 
-## Add mathematical operators
+```{r}
+a+b
+```
+
+We can register other mathematical operations(`-`, `*`, etc) individually like before or we can register them all at once on group generic methods such as [`Ops`](https://stat.ethz.ch/R-manual/R-devel/library/base/html/groupGeneric.html) which contain all the mathematical operations:
+
+```{r}
+# Register methods for R7 class on group generic
+# Ops.Value <- function(e1, e2){
+#   value = get(.Generic)(e1@data, e2@data)
+#   return(Value(value))
+# }
+
+
+Ops.Value <- function(e1, e2){
+  # Mathematical operation
+  value = get(.Generic)(e1@data, e2@data)
+  # Operation symbol
+  op = get(.Generic) %>% deparse() %>% gsub('[.()"\"]', "", .) %>% gsub('\\w', "", .)
+  #op = deparse1(op) |> gsub('[.()"\"]', "", .) |> gsub('\\w', "", .)
+  return(op)
+}
+
+```
+
+::: callout-note
+How would be do this using *R7::method\<-()*
+:::
+
+```{r}
+# Now we can do multiple operations
+a <- Value(2.0)
+b <- Value(-3.0)
+c <- Value(10.0)
+d <- a*b + c
+d
+```
+
+We need to keep track of operations.
+
+Now next step is to expand our class and methods to keep track of what values produced the results and the corresponding mathematical operation.
+
+```{r}
+# Add prev property that takes a list of previous values
+Value <- new_class(name = "Value",
+                   # Specify properties/data that the object will possess
+                   properties = list(
+                     data = class_numeric,
+                     prev = new_property(class_list, default = list()),
+                     op = new_property(class_character, default = "")
+                     ))
+
+
+
+# Register methods for R7 class on group generic
+Ops.Value <- function(e1, e2){
+  # Mathematical operation
+  value = get(.Generic)(e1@data, e2@data)
+  # Operation symbol
+  op = get(.Generic) %>% 
+    deparse() %>% 
+    gsub('[.()"\"]', "", .) %>% gsub('\\w', "", .)
+  return(Value(value, prev = list(e1, e2), op = op))
+}
+
+
+# Now we can do multiple operations
+a <- Value(2.0)
+b <- Value(-3.0)
+c <- Value(10.0)
+d <- a*b + c
+d@data
+d@prev
+d@op
+```
+
+```{r}
+# Register an R7 class with S4
+S4_register(Value)
+
+# Register Ops methods for R7 class
+method(Ops, list(Value, NULL)) <- function(e1, e2){
+  #value = 
+    #getGenerics(e1@data, e2@data)
+  method(Ops)(e1@data, e2@data)
+  #return(Value(value))
+}
+a+b
+```
 
 ```{r}
 # Define class Value
@@ -81,7 +184,7 @@ Ooops. Not so fast. Let's add some mathematical methods too.
 #                    properties = list(data = class_numeric))
 
 
-# Ops.Value = function(e1, e2) get(.Generic)(e1@data, e2@data)
+#Ops.Value = function(e1, e2) get(.Generic)(e1@data, e2@data)
 S4_register(Value)
 method(Ops, list(Value, NULL)) <- function(e1, e2){
   getGenerics(e1@data, e2@data)}
