@@ -14,6 +14,7 @@ e <- a*b
 
 e@label = "e"
 
+![](graph.png)
 d <- e + c
 
 d@label = "d"
