@@ -17,7 +17,6 @@ e@label = "e"
 d <- e + c
 
 d@label = "d"
-
 ![](graph.png)
 
 
