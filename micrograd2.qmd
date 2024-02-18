@@ -10,6 +10,9 @@ editor: visual
 library(S7)
 library(magrittr)
 library(here)
+library(DiagrammeR)
+library(tidyverse)
+
 ```
 
 ### Create class, instantiate and register print method
@@ -151,7 +154,7 @@ Value <- new_class(
     inp_data = class_numeric,
     prev = class_vector,
     op = new_property(default = NA),
-    label = class_character
+    label = new_property(class = class_character, default = "")
     
     
   )
@@ -236,32 +239,6 @@ nodes_edges = trace(d)
 ```
 
 
-```{r}
-library(DiagrammeR)
-graph <- create_graph()
-ndf <- create_node_df(n = 4)
-graph <-
-  create_graph(
-    nodes_df = ndf)
-graph
-
-```
-
-
-
-
-```{r}
-if (d@op){
-  print("yes")
-} else {
-  print("no")
-}
-
-```
-
-
-
-
 
 
 ```{r}
@@ -295,6 +272,18 @@ for (child in v@prev){
 edges
 ```
 
+```{r}
+replacer <- function(ref_vec, x){
+  ## Function that finds idx match and replaces label
+  ref_vec <<- ref_vec
+  idx = match(x, ref_vec)
+  ref_vec = ref_vec
+  ref_vec[idx] <<- paste0(ref_vec[idx], "_")
+  return(idx)
+  }
+```
+
+
 ## Build graph
 ```{r}
 graph <- create_graph()
@@ -305,10 +294,20 @@ nodes <-  nodes_edges %>%
 edges <- nodes_edges %>%
   pluck("edges")
 
+replacer <- function(x, ref_vec){
+  ## Function that finds idx match in ref_vec and replaces label
+  idx = c()
+  for (i in 1:length(x)){
+    idx = c(idx, match(x[i], ref_vec))
+    ref_vec[idx] = paste0(ref_vec[idx], "_")
+  }
+  return(idx)
+  }
+
 n <-  length(nodes)
 label <-  map_chr(1:n, \(x) pluck(nodes, x)@label)
 label_data <-  map_dbl(1:n, \(x) pluck(nodes, x)@inp_data)
-label <- map2_chr(label, label_data, \(x, y) paste(x, "|", "data", format(y, nsmall = 4)))
+label_data <- map2_chr(label, label_data, \(x, y) paste(x, "|", "data", format(y, nsmall = 4)))
 op = map_chr(1:n, \(x) pluck(nodes, x)@op)
 label_op = op[!is.na(op)]
 shape = rep("rectangle", n)
@@ -316,11 +315,12 @@ shape_op = rep("ellipse", length(label_op))
 
 # Total labels
 total_labels <-  c(label, label_op)
+label_data <- c(label_data, label_op)
 
 
 # Create all nodes
 ndf <- create_node_df(n = length(total_labels),
-                      label = total_labels,
+                      label = label_data,
                       shape = c(shape, shape_op),
                       width = 1.2,
                       #height = 0.3,
@@ -331,11 +331,14 @@ ndf <- create_node_df(n = length(total_labels),
 
 # Add op nodes
 edf <- create_edge_df(
-  from = match(label_op, total_labels),
+  #from = match(label_op, total_labels),
+  from = replacer(label_op, total_labels),
   to = match(label[!is.na(op)], total_labels),
   color = "midnightblue",
   rel = "leading_to"
 )
+
+
 
 # Create graph
 graph <- create_graph(nodes_df = ndf,
@@ -344,17 +347,266 @@ graph <- create_graph(nodes_df = ndf,
                       )
 
 # Connect child nodes to op nodes
-for (edge in edges){
-  graph <- add_edge(graph,
-                     from = match(pluck(edge, 1)@label, map_chr(total_labels, \(x) strsplit(x, "|") %>% unlist() %>% trimws() %>% pluck(1))),
-                     to = match(pluck(edge, 2)@op, map_chr(total_labels, \(x) strsplit(x, "|") %>% unlist() %>% trimws() %>% pluck(1))),
-                     rel = "",
-                    edge_aes(color = "midnightblue")
-
-  )
+child2op <- function(edges, total_labels, graph){
+  for (edge in edges){
+    from = match(pluck(edge, 1)@label, total_labels)
+    to = replacer(pluck(edge, 2)@op, total_labels)
+    graph <- add_edge(graph,
+                      from = from,
+                      to = to,
+                      rel = "",
+                      edge_aes(color = "midnightblue")
+    )
+    
+    total_labels[to] = paste0(total_labels[to], "_")
+  }
+  return(graph)
 }
+  
+# for (edge in edges){
+#   graph <- add_edge(graph,
+#                      from = match(pluck(edge, 1)@label, total_labels),
+#                      to = replacer(pluck(edge, 2)@op, total_labels),
+#                      rel = "",
+#                     edge_aes(color = "midnightblue")
+# 
+#   )
+# }
+graph <- child2op(edges, total_labels, graph)
 render_graph(graph)
 ```
+
+## Manual backpropagation
+
+Backpropagation is essentially calculating the derivative of a value (typically loss) with respect to all the parameters in the network. This tells us how much the loss would change if each parameter would be bumped up a bit. The next step is usually adjusting the parameters in the direction that reduces the loss.
+
+Derivative of a function $f$ at point $a$ is defined as the limit of the average rate of change of $f$ in the interval $[a, a + h]$ as $h$ approaches $0$. This is given by the formula:
+
+$$
+f'(a) = \lim_{h \to 0} \frac{f(a + h) - f(a)}{h}
+$$
+
+So let's update our derivatives manually at this point
+
+```{r}
+# Keep track of what operation produced a result
+Value <- new_class(
+  name = "Value",
+  properties = list(
+    inp_data = class_numeric,
+    prev = class_vector,
+    op = new_property(default = NA),
+    label = new_property(class = class_character, default = "")
+    
+    
+  )
+  )
+
+# Register an add method in + generic that will perform addition operation
+method(`+`, list(Value, NULL)) <- function(e1, e2){
+  # Perform add operation
+  val = e1@inp_data + e2@inp_data
+  Value(inp_data = val, prev = c(e1, e2), op = "+")
+}
+
+method(`*`, list(Value, NULL)) <- function(e1, e2){
+  # Perform product operation
+  val = e1@inp_data * e2@inp_data
+  Value(inp_data = val, prev = c(e1, e2), op = "*")
+}
+
+# Register a method to == generic that implements
+# equality comparison for Value class
+method(`==`, list(Value, NULL)) <- function(e1, e2){
+  e1@inp_data == e2@inp_data && e1@label == e2@label
+}
+
+# Instantiate object
+a <- Value(inp_data = 2.0, label = "a")
+b <- Value(inp_data = -3.0, label = "b")
+c <- Value(inp_data = 10.0, label = "c")
+e <- a*b
+e@label = "e"
+d <- e + c
+d@label = "d"
+f <- Value(inp_data = -2, label = "f")
+L <- d * f
+L@label = "L"
+
+# Create nodes and edges
+nodes_edges = trace(L)
+```
+
+```{r}
+replacer <- function(label, x){
+  idx = match(x, label)
+  label[idx] <<- "xx"
+  return(idx)}
+map_dbl(label_op, \(x) replacer(label, x))
+```
+
+```{r}
+```
+```{r}
+draw_dot <- function(root){
+  nodes_edges <- trace(root)
+  nodes <-  nodes_edges %>% 
+    pluck("nodes")
+  
+  
+  edges <- nodes_edges %>%
+    pluck("edges")
+  
+  graph = create_graph(attr_theme = "lr")
+  for(i in 1:length(nodes)){
+    n = pluck(nodes, i)
+    
+    graph = add_node(
+      graph,
+      label = paste(n@label, "|", "data", format(n@inp_data, nsmall = 4)),
+      node_aes = node_aes(
+        shape = "rectangle",
+        width = 1.2,
+        color = "midnightblue",
+        fillcolor = "white",
+        #fixed_size = FALSE,
+        
+      ))
+      # Add elliptical op nodes if node has op
+      if (!is.na(n@op)){
+        graph = add_node(
+          graph,
+          label = paste(n@op, "_", n@label),
+          node_aes = node_aes(
+            shape = "ellipse",
+            width = 1.2,
+            color = "midnightblue",
+            fillcolor = "white",
+            #fixed_size = FALSE,
+            
+          ))
+      }
+  }
+  
+  for (edge in edges){
+    graph <- add_edge(graph,
+                     from = match(pluck(edge, 1)@label, label),
+                     to = match(pluck(edge, 2)@label, label),
+                     rel = "",
+                     edge_aes(color = "midnightblue")
+    )
+  }
+  render_graph(graph)
+}
+
+draw_dot(L)
+```
+
+```{r}
+```
+
+
+
+
+```{r}  
+
+
+draw_dot <- function(root){
+  
+  nodes_edges <- trace(root)
+  nodes <-  nodes_edges %>% 
+  pluck("nodes")
+  
+  
+  edges <- nodes_edges %>%
+  pluck("edges")
+  
+  graph = create_graph(attr_theme = "lr")
+  for(i in 1:length(nodes)){
+  n = pluck(nodes, i)
+  
+  graph = add_node(
+    graph,
+    label = paste(n@label, "|", "data", format(n@inp_data, nsmall = 4)),
+    node_aes = node_aes(
+      shape = "rectangle",
+      width = 1.2,
+      color = "midnightblue",
+      fillcolor = "white",
+      #fixed_size = FALSE,
+      
+    ))
+    # Add elliptical op nodes if node has op
+    if (!is.na(n@op)){
+      graph = add_node(
+        graph,
+        label = paste(n@op, "_", n@label),
+        node_aes = node_aes(
+          shape = "ellipse",
+          width = 1.2,
+          color = "midnightblue",
+          fillcolor = "white",
+          #fixed_size = FALSE,
+  
+        ),
+        type = paste(n@op),
+        # edge_data = edge_data(
+        #   index = c(i, i+1)
+        #)
+      )
+      
+      # Connect op node to parent node
+      graph = add_edge(
+        graph,
+        from = paste(n@op, "_", n@label),
+        to = paste(n@label, "|", "data", format(n@inp_data, nsmall = 4)),
+        rel = paste(n@op),
+        edge_aes = edge_aes(color = "midnightblue")
+      )
+    }
+  
+  
+  
+  }
+  
+  ## Connect child nodes to op nodes
+  for (edge in edges){
+  graph = add_edge(
+    graph,
+    from = paste(pluck(edge, 1)@label, "|", "data", format(pluck(edge, 1)@inp_data, nsmall = 4)),
+    to = paste(pluck(edge, 2)@op, "_", pluck(edge, 2)@label),
+    edge_aes = edge_aes(color = "midnightblue"),
+    rel = paste(pluck(edge, 2)@op)
+  )
+  
+  }
+  
+  # Set node attributes to display
+  graph <- graph %>% 
+  set_node_attr_to_display(attr = label, default = "label")
+  
+  graph[["nodes_df"]] <- graph[["nodes_df"]] %>%
+  mutate(display = case_when(shape == "ellipse" ~ "type",
+                             .default = display))
+  
+  
+  # Render graph
+  render_graph(graph)
+  
+}
+
+# Draw graph
+draw_dot(L)
+```
+
+```{r}
+
+
+```
+
+
+
+
 
 ```{r}
 # Save graph
