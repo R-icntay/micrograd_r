@@ -155,9 +155,7 @@ Value <- new_class(
     prev = class_vector,
     op = new_property(default = NA),
     label = new_property(class = class_character, default = "")
-    
-    
-  )
+    )
   )
 
 # Register an add method in + generic that will perform addition operation
@@ -272,16 +270,7 @@ for (child in v@prev){
 edges
 ```
 
-```{r}
-replacer <- function(ref_vec, x){
-  ## Function that finds idx match and replaces label
-  ref_vec <<- ref_vec
-  idx = match(x, ref_vec)
-  ref_vec = ref_vec
-  ref_vec[idx] <<- paste0(ref_vec[idx], "_")
-  return(idx)
-  }
-```
+
 
 
 ## Build graph
@@ -380,46 +369,31 @@ render_graph(graph)
 
 Backpropagation is essentially calculating the derivative of a value (typically loss) with respect to all the parameters in the network. This tells us how much the loss would change if each parameter would be bumped up a bit. The next step is usually adjusting the parameters in the direction that reduces the loss.
 
-Derivative of a function $f$ at point $a$ is defined as the limit of the average rate of change of $f$ in the interval $[a, a + h]$ as $h$ approaches $0$. This is given by the formula:
+Derivative of a function $f$ at point $a$ is defined mathematically as:
 
 $$
 f'(a) = \lim_{h \to 0} \frac{f(a + h) - f(a)}{h}
 $$
 
+
+i.e if we bump up $a$ by a small amount $h$, how much does $f(a)$ change? If the derivative is positive, then $f(a)$ increases, if it's negative, then $f(a)$ decreases. 
+
+
 So let's update our derivatives manually at this point
 
 ```{r}
-# Keep track of what operation produced a result
+# Add grad property to all nodes with default 0
 Value <- new_class(
   name = "Value",
   properties = list(
     inp_data = class_numeric,
     prev = class_vector,
     op = new_property(default = NA),
-    label = new_property(class = class_character, default = "")
-    
-    
+    label = new_property(class = class_character, default = ""),
+    grad = new_property(class = class_numeric, default = 0.0)
+    )
   )
-  )
 
-# Register an add method in + generic that will perform addition operation
-method(`+`, list(Value, NULL)) <- function(e1, e2){
-  # Perform add operation
-  val = e1@inp_data + e2@inp_data
-  Value(inp_data = val, prev = c(e1, e2), op = "+")
-}
-
-method(`*`, list(Value, NULL)) <- function(e1, e2){
-  # Perform product operation
-  val = e1@inp_data * e2@inp_data
-  Value(inp_data = val, prev = c(e1, e2), op = "*")
-}
-
-# Register a method to == generic that implements
-# equality comparison for Value class
-method(`==`, list(Value, NULL)) <- function(e1, e2){
-  e1@inp_data == e2@inp_data && e1@label == e2@label
-}
 
 # Instantiate object
 a <- Value(inp_data = 2.0, label = "a")
@@ -434,85 +408,249 @@ L <- d * f
 L@label = "L"
 
 # Create nodes and edges
-nodes_edges = trace(L)
+#nodes_edges = trace(L)
 ```
 
-```{r}
-replacer <- function(label, x){
-  idx = match(x, label)
-  label[idx] <<- "xx"
-  return(idx)}
-map_dbl(label_op, \(x) replacer(label, x))
-```
 
 ```{r}
-```
-```{r}
-draw_dot <- function(root){
-  nodes_edges <- trace(root)
-  nodes <-  nodes_edges %>% 
-    pluck("nodes")
+
+
+
+## Function to calculate derivative of L wrt to other parameters
+calc_derivatives <- function(h = 0.0001, wrt = "L"){
   
+  #stopifnot((wrt %in% c("a", "b", "c", "f", "L")))
+  # Instantiate original object
+  a <- Value(inp_data = 2.0, label = "a")
+  b <- Value(inp_data = -3.0, label = "b")
+  c <- Value(inp_data = 10.0, label = "c")
+  e <- a*b
+  e@label = "e"
+  d <- e + c
+  d@label = "d"
+  f <- Value(inp_data = -2, label = "f")
+  L <- d * f
+  L@label = "L"
+  L1 <- L@inp_data
   
-  edges <- nodes_edges %>%
-    pluck("edges")
+  # Bump up wrt by h
+  if (wrt == "a"){
+    a@inp_data = a@inp_data + h
+  } else if (wrt == "b"){
+    b@inp_data = b@inp_data + h
+  } else if (wrt == "c"){
+    c@inp_data = c@inp_data + h
+  }
+  # else if (wrt == "f"){
+  #   f@inp_data = f@inp_data + h
+  # } else if (wrt == "d"){
+  #   d@inp_data = d@inp_data + h
+  # } else if (wrt == "e"){
+  #   e@inp_data = e@inp_data + h
+  # }
   
-  graph = create_graph(attr_theme = "lr")
-  for(i in 1:length(nodes)){
-    n = pluck(nodes, i)
-    
-    graph = add_node(
-      graph,
-      label = paste(n@label, "|", "data", format(n@inp_data, nsmall = 4)),
-      node_aes = node_aes(
-        shape = "rectangle",
-        width = 1.2,
-        color = "midnightblue",
-        fillcolor = "white",
-        #fixed_size = FALSE,
-        
-      ))
-      # Add elliptical op nodes if node has op
-      if (!is.na(n@op)){
-        graph = add_node(
-          graph,
-          label = paste(n@op, "_", n@label),
-          node_aes = node_aes(
-            shape = "ellipse",
-            width = 1.2,
-            color = "midnightblue",
-            fillcolor = "white",
-            #fixed_size = FALSE,
-            
-          ))
-      }
+  # Recalculate L with bumped up wrt
+  e <- a*b
+  e@label = "e"
+  if (wrt == "e"){
+    e@inp_data = e@inp_data + h
+  }
+  d <- e + c
+  d@label = "d"
+  if (wrt == "d"){
+    d@inp_data = d@inp_data + h
+  }
+  f <- Value(inp_data = -2, label = "f")
+  if (wrt == "f"){
+    f@inp_data = f@inp_data + h
+  }
+  L <- d * f
+  L@label = "L"
+  L2 <- L@inp_data
+  
+  if (wrt == "L"){
+    L2 <- L@inp_data + h
   }
   
-  for (edge in edges){
-    graph <- add_edge(graph,
-                     from = match(pluck(edge, 1)@label, label),
-                     to = match(pluck(edge, 2)@label, label),
-                     rel = "",
-                     edge_aes(color = "midnightblue")
-    )
-  }
-  render_graph(graph)
+  
+  
+  # Calculate derivative
+  # f(a)' = (f(a + h) - f(a)) / h
+  derivative = (L2 - L1) / h
+  cat("Derivative of L wrt to ", wrt, " is ", derivative)
+  
+  
 }
 
+# Derivative of L wrt to a
+calc_derivatives(wrt = "L")
+
+```
+
+### Derivative of L wrt to L
+
+```{r}
+calc_derivatives(wrt = "L")
+
+```
+Makes sense, right? If we change L, then L changes exactly at the same rate as itself, so the rate of change is 1. The derivative of a value with respect to itself is 1.
+
+```{r}
+# Update L
+L@grad = 1
+# Draw graph
 draw_dot(L)
 ```
 
+### Derivative of L wrt to f
+
 ```{r}
+# Derivative of L wrt to f
+calc_derivatives(wrt = "f")
+# Update derivative of L wrt to f
+f@grad = d@inp_data
+
 ```
+The derivative of L wrt f i.e $\frac{dL}{df}$ is 4. This means that if we bump up f by a small amount, L will increase by 4 times that amount. 
+
+We can also verify this using basic Calculus. $L = d\times f$. So $\frac{dL}{df} = d$, and $d$ = 4 as defined earlier 
+
+
+### Derivative of L wrt to d
+
+Conversely, the $\frac{dL}{dd}$ is $f$.
+
+
+```{r}
+# Derivative of L wrt to d
+calc_derivatives(wrt = "d")
+# Update derivative of L wrt to d
+d@grad = f@inp_data
+
+
+```
+### Derivative of L wrt to c
+
+```{r}
+# Derivative of L wrt to c
+calc_derivatives(wrt = "c")
+
+
+```
+To verify this, we'll have to use the [chain rule](https://en.wikipedia.org/wiki/Chain_rule).
+
+$$
+L = d \times f \\
+d = e + c \\
+\frac{dL}{dc} = \frac{dL}{dd} \times \frac{dd}{dc} = f \times 1 \\
+\frac{dL}{dc} = f = -2
+$$
+
+
+```{r}
+# Update derivative of L wrt to c
+c@grad = f@inp_data
+```
+
+
+### Derivative of L wrt to e
+
+```{r}
+# Derivative of L wrt to e
+calc_derivatives(wrt = "e")
+
+```
+Again, we can verify this using the chain rule.
+$$
+L = d \times f \\
+d = e + c \\
+\frac{dL}{de} = \frac{dL}{dd} \times \frac{dd}{de} = f \times 1 \\
+\frac{dL}{de} = f = -2
+
+$$
+```{r}
+# Update derivative of L wrt to e
+e@grad = f@inp_data
+
+```
+
+
+### Derivative of L wrt to a
+
+```{r}
+# Derivative of L wrt to a
+calc_derivatives(wrt = "a")
+```
+Again, we can verify this using the chain rule.
+
+$$
+L = d \times f \\
+d = e + c \\
+e = a \times b \\
+\frac{dL}{da} = \frac{dL}{dd} \times \frac{dd}{de} \times \frac{de}{da} = f \times 1 \times b \\
+\frac{dL}{da} = f \times b = -2 \times -3 = 6
+$$
+```{r}
+# Update derivative of L wrt to a
+a@grad = f@inp_data * b@inp_data
+
+```
+
+### Derivative of L wrt to b
+
+```{r}
+# Derivative of L wrt to b
+calc_derivatives(wrt = "b")
+
+```
+Again, we can verify this using the chain rule.
+
+$$
+L = d \times f \\
+d = e + c \\
+e = a \times b \\
+\frac{dL}{db} = \frac{dL}{dd} \times \frac{dd}{de} \times \frac{de}{db} = f \times 1 \times a \\
+\frac{dL}{db} = f \times a = -2 \times 2 = -4
+
+$$
+```{r}
+# Update derivative of L wrt to b
+b@grad = f@inp_data * a@inp_data
+```
+
+This means that if we bump up b by a small amount, L will decrease by 4 times that amount.
+
+Now, let's visualize the computational graph with imputed gradients.
+
+```{r}
+# Instantiate object
+a <- Value(inp_data = 2.0, label = "a", grad = 6)
+b <- Value(inp_data = -3.0, label = "b", grad = -4)
+c <- Value(inp_data = 10.0, label = "c", grad = -2)
+e <- a*b
+e@label = "e"
+e@grad = -2
+d <- e + c
+d@label = "d"
+d@grad = -2
+f <- Value(inp_data = -2, label = "f")
+f@grad = 4
+L <- d * f
+L@label = "L"
+L@grad = 1
+draw_dot(L)
+```
+
 
 
 
 
 ```{r}  
 
-
+# Create function that draws a DAG of the computation graph
 draw_dot <- function(root){
   
+  # Obtain nodes and edges
   nodes_edges <- trace(root)
   nodes <-  nodes_edges %>% 
   pluck("nodes")
@@ -521,22 +659,28 @@ draw_dot <- function(root){
   edges <- nodes_edges %>%
   pluck("edges")
   
+  # Instantiate graph that goes from left to right
   graph = create_graph(attr_theme = "lr")
+  
   for(i in 1:length(nodes)){
   n = pluck(nodes, i)
   
+  # Add rectangular nodes i.e data nodes
   graph = add_node(
     graph,
-    label = paste(n@label, "|", "data", format(n@inp_data, nsmall = 4)),
+    label = paste(n@label, "|", "data", format(n@inp_data, nsmall = 4), "|", "grad", format(n@grad, nsmall = 4)),
     node_aes = node_aes(
-      shape = "rectangle",
-      width = 1.2,
+      shape = "Mrecord",
+      #width = 2.2,
+      #height = 0.1,
       color = "midnightblue",
       fillcolor = "white",
-      #fixed_size = FALSE,
+      fixedsize = FALSE,
+      labelloc = "b",
+      #margin = c(0.11, 0),
       
     ))
-    # Add elliptical op nodes if node has op
+    # Add elliptical op nodes and connect to parent node if node has op
     if (!is.na(n@op)){
       graph = add_node(
         graph,
@@ -559,8 +703,7 @@ draw_dot <- function(root){
       graph = add_edge(
         graph,
         from = paste(n@op, "_", n@label),
-        to = paste(n@label, "|", "data", format(n@inp_data, nsmall = 4)),
-        rel = paste(n@op),
+        to = paste(n@label, "|", "data", format(n@inp_data, nsmall = 4), "|", "grad", format(n@grad, nsmall = 4)),
         edge_aes = edge_aes(color = "midnightblue")
       )
     }
@@ -569,14 +712,14 @@ draw_dot <- function(root){
   
   }
   
-  ## Connect child nodes to op nodes
+  ## Connect child nodes to op nodes of their parent node
   for (edge in edges){
   graph = add_edge(
     graph,
-    from = paste(pluck(edge, 1)@label, "|", "data", format(pluck(edge, 1)@inp_data, nsmall = 4)),
+    from = paste(pluck(edge, 1)@label, "|", "data", format(pluck(edge, 1)@inp_data, nsmall = 4), "|", "grad", format(pluck(edge, 1)@grad, nsmall = 4)),
+    
     to = paste(pluck(edge, 2)@op, "_", pluck(edge, 2)@label),
-    edge_aes = edge_aes(color = "midnightblue"),
-    rel = paste(pluck(edge, 2)@op)
+    edge_aes = edge_aes(color = "midnightblue")
   )
   
   }
@@ -599,21 +742,7 @@ draw_dot <- function(root){
 draw_dot(L)
 ```
 
-```{r}
 
-
-```
-
-
-
-
-
-```{r}
-# Save graph
-graph %>% 
-  export_graph("graph.png")
-  
-```
 
 
 
